@@ -1,0 +1,1058 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SCARA Ladder Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: cell view + operator panel on top, fix toggles, live ladder, then tags and event log. */
+:root{
+  --bg:#edf0f1; --panel:#ffffff; --panel2:#f4f6f7; --ink:#182126; --ink2:#52626b; --line:#d3dbdf;
+  --accent:#0f6d77; --accent-ink:#ffffff;
+  --ok:#1b7f45; --ok-bg:#dff3e6; --warn:#8f5600; --warn-bg:#fdecc8; --crit:#c02828; --crit-bg:#fbdcdc;
+  --wire:#a3afb5; --hot:#1b9a52; --arm:#3b4a52; --floor:#f8fafb; --grid:#e3e9ec; --part:#d98a1c;
+  --fix:#6a4fc4; --fix-bg:#ece7fb;
+  --font-body:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-head:'IBM Plex Sans Condensed','IBM Plex Sans',system-ui,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1518; --panel:#172025; --panel2:#1d2a30; --ink:#e6edf0; --ink2:#9db0b9; --line:#2b3a42;
+    --accent:#4cc3cf; --accent-ink:#06262a;
+    --ok:#52d98a; --ok-bg:#15361f; --warn:#f0b64a; --warn-bg:#3a2b0c; --crit:#ff7a7a; --crit-bg:#431a1a;
+    --wire:#4a5b64; --hot:#4be08a; --arm:#aebdc5; --floor:#131b1f; --grid:#1c282e; --part:#f0a63a;
+    --fix:#b3a1ff; --fix-bg:#2a2347; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1518; --panel:#172025; --panel2:#1d2a30; --ink:#e6edf0; --ink2:#9db0b9; --line:#2b3a42;
+  --accent:#4cc3cf; --accent-ink:#06262a;
+  --ok:#52d98a; --ok-bg:#15361f; --warn:#f0b64a; --warn-bg:#3a2b0c; --crit:#ff7a7a; --crit-bg:#431a1a;
+  --wire:#4a5b64; --hot:#4be08a; --arm:#aebdc5; --floor:#131b1f; --grid:#1c282e; --part:#f0a63a;
+  --fix:#b3a1ff; --fix-bg:#2a2347; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:14px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+.wrap{max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1,h2,h3{font-family:var(--font-head);font-weight:600;margin:0;text-wrap:balance}
+h1{font-size:28px;line-height:1.15}
+h2{font-size:17px}
+h3{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2)}
+p{margin:0}
+code,.mono{font-family:var(--font-mono)}
+.lede{color:var(--ink2);max-width:62ch;margin-top:6px}
+.top{display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between;align-items:flex-end}
+.ctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn,.op{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:7px 12px;min-height:38px;text-align:left}
+.btn:hover,.op:hover{border-color:var(--ink2)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--panel)}
+.seg button{background:transparent;border:0;padding:7px 12px;min-height:36px;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.stage{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(300px,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.stage{grid-template-columns:minmax(0,1fr)}}
+.cellcard{display:flex;flex-direction:column;gap:10px}
+#cellsvg{width:100%;height:auto;display:block;border-radius:8px;border:1px solid var(--line)}
+.floor{fill:var(--floor)} .gridl{stroke:var(--grid);stroke-width:1}
+.fence{stroke:var(--ink2);stroke-width:6;fill:none;stroke-linejoin:round}
+.door{stroke:var(--ok);stroke-width:9;stroke-linecap:round}
+.door.open{stroke:var(--crit)}
+.station{fill:var(--panel2);stroke:var(--line);stroke-width:3}
+.homem{fill:none;stroke:var(--wire);stroke-width:3;stroke-dasharray:8 6}
+.lbl{fill:var(--ink2);font:500 17px var(--font-mono);letter-spacing:.08em}
+.link{stroke:var(--arm);stroke-width:30;stroke-linecap:round;opacity:.92}
+.link2{stroke-width:24}
+.joint{fill:var(--panel);stroke:var(--arm);stroke-width:6}
+.basec{fill:var(--arm)}
+.sring{fill:none;stroke:var(--wire);stroke-width:7}
+.sring.on{stroke:var(--hot)}
+.toolring{fill:var(--panel);fill-opacity:.15;stroke:var(--ink);stroke-width:5}
+.tshadow{fill:var(--ink);opacity:.18}
+.jaw{fill:var(--ink)}
+.partr{fill:var(--part);stroke:var(--ink);stroke-width:2}
+.partf{fill:var(--part);stroke:var(--crit);stroke-width:3}
+.pall{fill:var(--part);stroke:var(--ink);stroke-width:1.5;opacity:.9}
+.esb{fill:#e8c33a;stroke:var(--ink);stroke-width:2}
+.esk{fill:#cf2a2a;stroke:#7d1010;stroke-width:3}
+.esk.hit{fill:#7d1010}
+.gtrack{fill:var(--panel2);stroke:var(--line);stroke-width:2}
+.gmark{fill:var(--accent)}
+.cellinfo{fill:var(--ink);font:500 20px var(--font-mono)}
+.strip{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);font-size:12.5px;white-space:nowrap}
+.chip b{font-weight:600}
+.chip.ok{background:var(--ok-bg);color:var(--ok);border-color:transparent}
+.chip.warn{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.chip.crit{background:var(--crit-bg);color:var(--crit);border-color:transparent}
+.ban{display:flex;gap:10px;padding:8px 12px;border-radius:8px;font-size:13.5px;border:1px solid transparent}
+.ban b{font-family:var(--font-head);font-weight:600;letter-spacing:.04em;text-transform:uppercase;font-size:12.5px;padding-top:1px;white-space:nowrap}
+.ban.crit{background:var(--crit-bg);color:var(--crit)}
+.ban.warn{background:var(--warn-bg);color:var(--warn)}
+#banners{display:flex;flex-direction:column;gap:6px}
+.waiting{color:var(--ink2);font-size:13.5px}
+.waiting b{color:var(--ink);font-weight:600}
+.side{display:flex;flex-direction:column;gap:16px;min-width:0}
+.ops-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.op{display:flex;flex-direction:column;justify-content:center;gap:1px;font-weight:500}
+.op small{display:block;font-size:12px;color:var(--ink2);font-weight:400}
+.op[aria-pressed="true"]{border-color:var(--crit);background:var(--crit-bg);color:var(--crit)}
+.op[aria-pressed="true"] small{color:inherit}
+.op.good[aria-pressed="true"]{border-color:var(--ok);background:var(--ok-bg);color:var(--ok)}
+.op.mom.down{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.op.mom.down small{color:inherit}
+.op.green{border-color:var(--ok);color:var(--ok);font-weight:600}
+.op.green.down{background:var(--ok);color:var(--bg)}
+.op.estop{flex-direction:row;align-items:center;gap:10px}
+.op.estop .knob{width:26px;height:26px;border-radius:50%;background:#cf2a2a;border:3px solid #e8c33a;flex:none}
+.op.estop[aria-pressed="true"] .knob{background:#7d1010}
+.op.keyop{gap:4px;align-items:flex-start}
+.op.keyop .seg button{min-height:30px;padding:4px 12px}
+.opsub{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.row{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.row label{font-size:13px}
+.manrow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:100%}
+input[type=range]{accent-color:var(--accent);flex:1;min-width:120px}
+output{font-family:var(--font-mono);font-size:13px;min-width:3.6em}
+.scn{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.scn button{display:flex;flex-direction:column;gap:0;width:100%}
+.scn button span{font-weight:600}
+.scn button small{color:var(--ink2);font-size:12.5px}
+.scn button.run{border-color:var(--accent)}
+.watch{margin-top:10px;padding:10px 12px;border-radius:8px;background:var(--panel2);font-size:13.5px;min-height:3em}
+.fixhead{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center}
+.fixes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:10px}
+.fx{display:flex;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
+.fx input{margin-top:3px;accent-color:var(--fix);width:18px;height:18px;flex:none}
+.fx b{display:block;font-weight:600}
+.fx span{display:block;color:var(--ink2);font-size:13px}
+.fx .refs{font-family:var(--font-mono);font-size:12px;color:var(--fix)}
+.fx.on{border-color:var(--fix);background:var(--fix-bg)}
+.note{color:var(--ink2);font-size:12.5px;margin-top:8px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;color:var(--ink2);font-size:12.5px;margin:6px 0 10px}
+.legend code{color:var(--ink);background:var(--panel2);padding:1px 6px;border-radius:4px;border:1px solid var(--line)}
+.ladder{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.rung{display:grid;grid-template-columns:210px minmax(0,1fr) 26px auto;min-width:940px;align-items:center;gap:0 10px;padding:10px 14px;border-bottom:1px solid var(--line);transition:background .25s}
+.rung:last-child{border-bottom:0}
+.rung.live{background:var(--ok-bg)}
+.rhead{display:flex;flex-direction:column;gap:0}
+.rhead b{font-family:var(--font-mono);font-size:13px}
+.rhead .rt{font-weight:600;font-size:13px}
+.rhead .rp{font-size:12px;color:var(--ink2);line-height:1.35}
+.rwrap{display:flex;align-items:center;min-width:0}
+.branches{flex:3 1 0;display:flex;flex-direction:column;gap:8px;position:relative;border-left:3px solid var(--ink2);min-width:0}
+.rwrap.solo .branches{flex:1 1 0}
+.after{flex:2 1 0;display:flex;align-items:center;min-width:0}
+.brow{display:flex;align-items:center;height:46px}
+.w{flex:1 1 10px;min-width:10px;height:2px;background:var(--wire);transition:background .1s}
+.w.hot{background:var(--hot)}
+.join{position:absolute;right:0;top:23px;bottom:23px;width:2px;background:var(--wire)}
+.join.hot{background:var(--hot)}
+.outw{height:2px;background:var(--wire);width:26px}
+.outw.hot{background:var(--hot)}
+.ct{display:flex;flex-direction:column;align-items:center;gap:1px;flex:none;padding:0 2px;color:var(--ink2)}
+.ct .tg{font-family:var(--font-mono);font-size:11px;line-height:1.1;color:var(--ink2)}
+.ct .sym{position:relative;width:28px;height:22px;display:block}
+.ct .sym::before,.ct .sym::after{content:"";position:absolute;top:0;bottom:0;width:3px;background:currentColor}
+.ct .sym::before{left:4px}.ct .sym::after{right:4px}
+.ct .sym i{display:none;position:absolute;left:50%;top:50%;width:2px;height:30px;margin:-15px 0 0 -1px;background:currentColor;transform:rotate(28deg)}
+.ct.neg .sym i{display:block}
+.ct.on{color:var(--hot)}
+.ct.on .tg{color:var(--ink)}
+.fixed{outline:1.5px dashed var(--fix);outline-offset:2px;border-radius:4px}
+.coils{display:flex;flex-direction:column;gap:6px;border-left:2px solid var(--wire);border-right:3px solid var(--ink2);padding:2px 0}
+.coil{display:flex;align-items:center;font-family:var(--font-mono);font-size:12.5px;white-space:nowrap}
+.coil::before{content:"";width:14px;height:2px;background:var(--wire)}
+.coil .in{display:flex;align-items:center;gap:6px;border:1.5px solid var(--line);border-radius:5px;padding:2px 8px;margin-right:12px;background:var(--panel2)}
+.coil .ty{color:var(--ink2)}
+.coil .dot{width:9px;height:9px;border-radius:50%;background:var(--line);flex:none}
+.coil .dot.v{background:var(--hot)}
+.coil.on .in{border-color:var(--hot);background:var(--ok-bg)}
+.ton{flex:none;width:132px;border:1.5px solid var(--line);border-radius:5px;padding:4px 8px;font-family:var(--font-mono);font-size:11.5px;background:var(--panel2);display:flex;flex-direction:column;gap:3px}
+.ton.on{border-color:var(--hot)}
+.ton .bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.ton .bar i{display:block;height:100%;width:0;background:var(--hot)}
+.ton.q .bar i{background:var(--crit)}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.two{grid-template-columns:minmax(0,1fr)}}
+.tags{display:flex;flex-direction:column;gap:12px;margin-top:10px}
+.tgrp h3{margin-bottom:6px}
+.tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px 12px}
+.tg2{display:flex;align-items:center;gap:8px;font-size:12.5px;min-width:0}
+.led{width:10px;height:10px;border-radius:50%;background:var(--line);flex:none}
+.led.on{background:var(--hot)}
+.tg2 code{font-size:12.5px;font-weight:500}
+.tg2 .ds{color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.log{list-style:none;margin:10px 0 0;padding:0;max-height:360px;overflow:auto;display:flex;flex-direction:column;gap:2px;font-size:13px}
+.log li{display:flex;gap:10px;padding:3px 6px;border-radius:4px}
+.log li time{font-family:var(--font-mono);color:var(--ink2);flex:none;min-width:5.2em;font-size:12px;padding-top:1px}
+.log li.ok{color:var(--ok)}.log li.warn{color:var(--warn)}.log li.crit{color:var(--crit);background:var(--crit-bg)}
+.log li.empty{color:var(--ink2)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>SCARA Ladder Simulator</h1>
+      <p class="lede">Your 15 rungs run exactly as you drew them, scanned every 20 ms. Use the operator panel or a scenario and watch the robot, the ladder and the tags move together.</p>
+    </div>
+    <div class="ctl" role="group" aria-label="Simulation controls">
+      <button class="btn" id="bPause" type="button">Pause</button>
+      <button class="btn" id="bStep" type="button">Step 1 scan</button>
+      <div class="seg" id="spd" role="group" aria-label="Speed">
+        <button type="button" data-v="0.5" aria-pressed="false">0.5×</button>
+        <button type="button" data-v="1" aria-pressed="true">1×</button>
+        <button type="button" data-v="2" aria-pressed="false">2×</button>
+      </div>
+      <button class="btn" id="bPower" type="button">Power-up</button>
+    </div>
+  </header>
+
+  <section class="stage">
+    <div class="card cellcard">
+      <svg id="cellsvg" viewBox="0 0 1040 700" role="img" aria-label="Top view of the SCARA robot cell">
+        <defs><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" class="gridl"/></pattern></defs>
+        <rect x="0" y="0" width="1040" height="700" class="floor"/>
+        <rect x="30" y="40" width="920" height="560" fill="url(#grid)"/>
+        <path d="M260 600 L30 600 L30 40 L950 40 L950 600 L400 600" class="fence"/>
+        <line id="door" x1="260" y1="600" x2="400" y2="600" class="door"/>
+        <text x="330" y="634" class="lbl" text-anchor="middle">DOOR</text>
+        <circle cx="640" cy="300" r="26" class="homem"/>
+        <text x="640" y="352" class="lbl" text-anchor="middle">HOME</text>
+        <rect x="450" y="440" width="100" height="100" rx="6" class="station"/>
+        <text x="500" y="566" class="lbl" text-anchor="middle">PICK</text>
+        <rect x="715" y="110" width="150" height="120" rx="6" class="station"/>
+        <text x="790" y="256" class="lbl" text-anchor="middle">PLACE</text>
+        <g id="pallet"></g>
+        <g id="floorParts"></g>
+        <rect id="part" width="34" height="34" rx="4" class="partr" x="0" y="0" visibility="hidden"/>
+        <line id="l1" class="link" x1="150" y1="300" x2="300" y2="200"/>
+        <line id="l2" class="link link2" x1="300" y1="200" x2="470" y2="300"/>
+        <circle id="sring" cx="150" cy="300" r="46" class="sring"/>
+        <circle cx="150" cy="300" r="34" class="basec"/>
+        <circle id="elbow" r="15" class="joint" cx="300" cy="200"/>
+        <g id="tool">
+          <circle id="tsh" r="20" class="tshadow"/>
+          <circle id="tring" r="22" class="toolring"/>
+          <rect id="jawL" width="8" height="26" y="-13" rx="2" class="jaw"/>
+          <rect id="jawR" width="8" height="26" y="-13" rx="2" class="jaw"/>
+        </g>
+        <g transform="translate(95 95)"><circle r="30" class="esb"/><circle id="esk" r="20" class="esk"/></g>
+        <text x="95" y="148" class="lbl" text-anchor="middle">E-STOP</text>
+        <rect x="990" y="120" width="18" height="360" rx="4" class="gtrack"/>
+        <rect id="gm" x="985" y="116" width="28" height="9" rx="3" class="gmark"/>
+        <text x="999" y="104" class="lbl" text-anchor="middle">UP</text>
+        <text x="999" y="508" class="lbl" text-anchor="middle">DN</text>
+        <text id="cellInfo" x="30" y="676" class="cellinfo"></text>
+      </svg>
+      <div class="strip" id="strip" aria-live="off"></div>
+      <div id="banners"></div>
+      <p class="waiting" id="waiting"></p>
+    </div>
+
+    <div class="side">
+      <div class="card">
+        <h2>Operator panel</h2>
+        <div class="ops-grid">
+          <button class="op estop" id="oEstop" type="button" aria-pressed="false"><span class="knob"></span><span><span id="oEstopN">E-Stop</span><small id="oEstopS">Released</small></span></button>
+          <button class="op" id="oDoor" type="button" aria-pressed="false"><span>Guard door</span><small id="oDoorS">Closed</small></button>
+          <div class="op keyop"><span>Mode key</span>
+            <div class="seg" id="oKey" role="group" aria-label="Mode key">
+              <button type="button" data-v="auto" aria-pressed="true">AUTO</button>
+              <button type="button" data-v="t1" aria-pressed="false">T1</button>
+            </div>
+          </div>
+          <button class="op good" id="oEnable" type="button" aria-pressed="false"><span>Enabling switch</span><small id="oEnableS">Released. Click to hold.</small></button>
+          <button class="op mom green" id="oStart" type="button"><span>Start</span><small>xStart</small></button>
+          <button class="op mom" id="oReset" type="button"><span>Reset</span><small>xReset</small></button>
+          <button class="op mom" id="oStop" type="button"><span>Stop request</span><small>xStopReq</small></button>
+          <button class="op" id="oFeed" type="button"><span>Feed a part</span><small id="oPartS">No part at pick</small></button>
+          <button class="op good" id="oDrive" type="button" aria-pressed="true"><span>Drive ready</span><small id="oDriveS">xDriveReady TRUE</small></button>
+          <button class="op" id="oJog" type="button"><span>Jog arm to home</span><small>T1, servos on</small></button>
+        </div>
+        <div class="opsub">
+          <div class="row">
+            <span>Done bits and xGripOK come from</span>
+            <div class="seg" id="oCell" role="group" aria-label="Who drives the done bits and xGripOK">
+              <button type="button" data-v="auto" aria-pressed="true">the simulated cell</button>
+              <button type="button" data-v="manual" aria-pressed="false">my clicks</button>
+            </div>
+          </div>
+          <div class="manrow" id="manRow" hidden></div>
+          <div class="row">
+            <label for="gDelay">Gripper close time</label>
+            <input id="gDelay" type="range" min="0.2" max="4" step="0.1" value="0.6">
+            <output id="gDelayO" for="gDelay">0.6 s</output>
+          </div>
+          <div class="row"><label><input id="gNever" type="checkbox"> Gripper never confirms (xGripOK stays FALSE)</label></div>
+          <div class="row"><label><input id="gBoot" type="checkbox"> Drives are already ready at power-up (skip the 1 s boot)</label></div>
+          <p class="note" style="margin-top:0">The simulated cell sets each done bit when its move finishes and clears it when its step ends. In T1 the arm only moves when you jog it.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Scenarios</h2>
+        <div class="scn" id="scn"></div>
+        <div class="watch" id="watch">Pick a scenario. It powers the program up again and presses the buttons for you.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="fixhead">
+      <div><h2>Fixes to try</h2><p class="note" style="margin-top:2px">Off means exactly your drawing. Switch a fix on and the ladder below changes, with the changed parts outlined in purple.</p></div>
+      <button class="btn primary" id="fxAll" type="button">Apply all fixes</button>
+    </div>
+    <div class="fixes" id="fixes"></div>
+    <p class="note">Not a toggle: xStopAfterCycle is set by rung 5 and cleared by rungs 11 and 14, but no rung reads it, and every cycle already needs a Start press. Stop request changes nothing as drawn.</p>
+  </section>
+
+  <section class="card">
+    <h2>Live ladder</h2>
+    <div class="legend">
+      <span><code>| |</code> passes when the tag is TRUE</span>
+      <span><code>|/|</code> passes when the tag is FALSE</span>
+      <span><code>(S)</code> set: turns on and stays on</span>
+      <span><code>(R)</code> reset: turns off</span>
+      <span><code>( )</code> follows the rung</span>
+      <span>Green wire carries power. Dot on a coil: that tag is TRUE now.</span>
+    </div>
+    <div class="ladder" id="ladder"></div>
+  </section>
+
+  <section class="two">
+    <div class="card"><h2>Tags</h2><div class="tags" id="tags"></div></div>
+    <div class="card"><h2>Event log</h2><ul class="log" id="log"></ul></div>
+  </section>
+</div>
+
+<script>
+/*ENGINE_START*/
+var TAGS = {
+  inputs: ['xEstop_NC','xDoor_NC','xAuto','xEnable','xStart','xReset','xStopReq','xPart','xGripOK','xDriveReady','xAtHome','xPickLowerDone','xCarryDone','xPlaceLowerDone','xPlaceDone'],
+  outputs: ['xServoOn','xGrip','xAlarm'],
+  memory: ['xSafe','xS0','xS1','xS2','xS3','xFault','xStopAfterCycle']
+};
+var SCAN_MS = 20, GRIP_PT = 2000;
+var STEP_RUNGS = [6, 8, 9, 11];
+
+function buildRungs(fx){
+  var c = function(v, n, fixed){ return {v:v, n:!!n, fixed:!!fixed}; };
+  var r4a = [c('xAuto'), c('xSafe')];
+  if (fx.jog) r4a.push(c('xFault', true, true));
+  var r14 = [{t:'S',v:'xS0'},{t:'R',v:'xS3'},{t:'R',v:'xS2'},{t:'R',v:'xS1'},{t:'R',v:'xStopAfterCycle'},{t:'R',v:'xFault'}];
+  if (fx.grip) r14.push({t:'R', v:'xGrip', fixed:true});
+  return [
+    {id:1, title:'Safe latch: set', plain:'E-Stop released, door closed and Reset pressed: turn the safe latch on.',
+      branches:[[c('xEstop_NC'),c('xDoor_NC'),c('xReset')]], coils:[{t:'S',v:'xSafe'}]},
+    {id:2, title:'E-Stop clears the latch', plain:'E-Stop pressed: turn the safe latch off at once.',
+      branches:[[c('xEstop_NC',true)]], coils:[{t:'R',v:'xSafe'}]},
+    {id:3, title:'Door open in AUTO', plain:'Door opened in AUTO: turn the safe latch off.',
+      branches:[[c('xDoor_NC',true),c('xAuto')]], coils:[{t:'R',v:'xSafe'}]},
+    {id:4, title:'Servo enable', plain: fx.jog
+        ? 'AUTO: servos follow the safe latch when there is no fault. T1: E-Stop healthy and enabling switch held, fault or not.'
+        : 'AUTO with safe latch, or T1 with E-Stop healthy and enabling switch held. A latched fault switches both off.',
+      branches:[r4a,[c('xEstop_NC'),c('xAuto',true),c('xEnable')]], after: fx.jog ? [] : [c('xFault',true)], coils:[{t:'O',v:'xServoOn'}]},
+    {id:5, title:'Stop request', plain:'Stop requested while a cycle is running: set xStopAfterCycle.',
+      branches:[[c('xStopReq'),c('xS0',true)]], coils:[{t:'S',v:'xStopAfterCycle'}]},
+    {id:6, title:'Idle to Pick', plain:'No fault, idle, safe, AUTO, Start pressed and a part present: go to Pick.',
+      branches:[[c('xFault',true),c('xS0'),c('xSafe'),c('xAuto'),c('xStart'),c('xPart')]], coils:[{t:'R',v:'xS0'},{t:'S',v:'xS1'}]},
+    {id:7, title:'Close gripper', plain:'Arm lowered at the pick point: latch the gripper closed.',
+      branches:[[c('xS1'),c('xPickLowerDone')]], coils:[{t:'S',v:'xGrip'}]},
+    {id:8, title:'Pick to Carry', plain:'Gripper confirmed closed: go to Carry.',
+      branches:[[c('xS1'),c('xGripOK')]], coils:[{t:'R',v:'xS1'},{t:'S',v:'xS2'}]},
+    {id:9, title:'Carry to Place', plain:'Carry move finished: go to Place.',
+      branches:[[c('xS2'),c('xCarryDone')]], coils:[{t:'R',v:'xS2'},{t:'S',v:'xS3'}]},
+    {id:10, title:'Open gripper', plain:'Arm lowered at the place point: release the gripper.',
+      branches:[[c('xS3'),c('xPlaceLowerDone')]], coils:[{t:'R',v:'xGrip'}]},
+    {id:11, title:'Place to Idle', plain:'Arm lifted after placing: clear the stop flag and go to Idle.',
+      branches:[[c('xS3'),c('xPlaceDone')]], coils:[{t:'R',v:'xS3'},{t:'R',v:'xStopAfterCycle'},{t:'S',v:'xS0'}]},
+    {id:12, title:'Gripper timeout', plain:'Told to close but no confirmation for 2 s: latch a fault.',
+      branches:[[c('xGrip'),c('xGripOK',true),c('xS1')]], timer:{name:'tGrip', pt:GRIP_PT}, coils:[{t:'S',v:'xFault'}]},
+    {id:13, title:'Drive lost mid-cycle', plain:'Drive not ready while not Idle: latch a fault.',
+      branches:[[c('xDriveReady',true),c('xS0',true)]], coils:[{t:'S',v:'xFault'}]},
+    {id:14, title:'Fault reset', plain:'Fault, safe latch, Reset, drive ready and arm at home: clear the fault and go to Idle.',
+      branches:[[c('xFault'),c('xSafe'),c('xReset'),c('xDriveReady'),c('xAtHome')]], coils:r14},
+    {id:15, title:'Alarm lamp', plain:'A latched fault lights the alarm lamp.',
+      branches:[[c('xFault')]], coils:[{t:'O',v:'xAlarm'}]}
+  ];
+}
+
+function newState(fx){
+  var v = {};
+  TAGS.inputs.concat(TAGS.outputs, TAGS.memory).forEach(function(k){ v[k] = false; });
+  v.xEstop_NC = true; v.xDoor_NC = true; v.xAuto = true;
+  if (fx.init) v.xS0 = true;
+  return {v:v, ton:{et:0, q:false}, scans:0, t:0, faultCause:null, last:null};
+}
+
+function scan(st, dtMs, fx){
+  var rungs = buildRungs(fx), v = st.v;
+  var out = {rungs:[], stepRungs:[]};
+  rungs.forEach(function(r){
+    var power = false;
+    var br = r.branches.map(function(b){
+      var flow = true;
+      var items = b.map(function(ct){
+        var val = !!v[ct.v];
+        var pass = ct.n ? !val : val;
+        var inflow = flow;
+        flow = flow && pass;
+        return {pass:pass, inflow:inflow};
+      });
+      if (flow) power = true;
+      return {ok:flow, items:items};
+    });
+    var branchPower = power, after = null;
+    if (r.after && r.after.length){
+      var aflow = branchPower;
+      var aitems = r.after.map(function(ct){
+        var val = !!v[ct.v], pass = ct.n ? !val : val, inflow = aflow;
+        aflow = aflow && pass;
+        return {pass:pass, inflow:inflow};
+      });
+      power = aflow; after = {items:aitems, ok:aflow};
+    }
+    var coilPower = power;
+    if (r.timer){
+      var ton = st.ton;
+      if (power) ton.et = Math.min(r.timer.pt, ton.et + dtMs); else ton.et = 0;
+      ton.q = ton.et >= r.timer.pt;
+      coilPower = ton.q;
+    }
+    var faultBefore = v.xFault;
+    r.coils.forEach(function(co){
+      if (co.t === 'O') v[co.v] = coilPower;
+      else if (coilPower) v[co.v] = (co.t === 'S');
+    });
+    if (coilPower && (r.id === 12 || r.id === 13) && !faultBefore && v.xFault) st.faultCause = r.id;
+    if (coilPower && r.id === 14 && faultBefore && !v.xFault) st.faultCause = null;
+    if (coilPower && STEP_RUNGS.indexOf(r.id) >= 0) out.stepRungs.push(r.id);
+    out.rungs.push({id:r.id, power:coilPower, rungPower:branchPower, br:br, after:after, et:st.ton.et, q:st.ton.q});
+  });
+  st.scans++; st.t += dtMs / 1000; st.last = out;
+  return out;
+}
+
+function hazardOf(v){
+  if (v.xServoOn && !v.xEstop_NC) return 'Servos are on while the E-Stop is pressed.';
+  if (v.xServoOn && v.xAuto && !v.xDoor_NC) return 'Servos are on in AUTO with the door open.';
+  return null;
+}
+
+/* Robot cell: one top-down SCARA with two links, a gripper and one part at a time. */
+var BASE = {x:150, y:300}, L1 = 345, L2 = 345;
+var PICK = {x:500, y:490}, PLACE = {x:790, y:170}, HOME = {x:640, y:300};
+var MOVE_T = {0:1.4, 1:1.6, 2:1.8, 3:1.2};
+function dist(a, b){ return Math.hypot(a.x - b.x, a.y - b.y); }
+function smooth(u){ u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); }
+function seg(u, a, b){ return smooth((u - a) / (b - a)); }
+
+function newCell(boot){
+  return {x:HOME.x, y:HOME.y, z:1, step:-1, mv:null, jog:null, boot:boot ? 1.0 : 0, grip:0, part:null, floor:[], placed:0, dropped:0, events:[]};
+}
+function targetOf(act){
+  if (act === 1) return {x:PICK.x, y:PICK.y, z:0};
+  if (act === 2 || act === 3) return {x:PLACE.x, y:PLACE.y, z:1};
+  return {x:HOME.x, y:HOME.y, z:1};
+}
+function startMove(cell, act){
+  cell.mv = {act:act, from:{x:cell.x, y:cell.y, z:cell.z}, to:targetOf(act), t:0, dur:MOVE_T[act], done:false, low:false};
+}
+function jogHome(cell){
+  cell.mv = null;
+  cell.jog = {from:{x:cell.x, y:cell.y, z:cell.z}, t:0, dur:1.6};
+}
+function poseAt(mv, u){
+  var f = mv.from, t = mv.to, k, z;
+  if (mv.act === 1){ k = seg(u, 0, 0.75); z = f.z + (t.z - f.z) * seg(u, 0.5, 1); }
+  else if (mv.act === 2){ k = seg(u, 0.2, 1); z = f.z + (t.z - f.z) * seg(u, 0, 0.25); }
+  else if (mv.act === 3){ k = 1; z = 1 - Math.sin(Math.PI * Math.min(1, u)); }
+  else { k = seg(u, 0, 1); z = f.z + (t.z - f.z) * seg(u, 0, 0.4); }
+  return {x:f.x + (t.x - f.x) * k, y:f.y + (t.y - f.y) * k, z:z};
+}
+function feedPart(cell){
+  if (cell.part) return false;
+  cell.part = {x:PICK.x, y:PICK.y, z:0, held:false};
+  cell.events.push(['Part fed to the pick station', 'info']);
+  return true;
+}
+function releasePart(cell){
+  var p = cell.part; p.held = false;
+  if (dist(p, PLACE) < 90){
+    cell.placed++; cell.part = null;
+    cell.events.push(['Part placed on the pallet', 'ok']);
+  } else if (dist(p, PICK) < 45){
+    p.x = PICK.x; p.y = PICK.y; p.z = 0;
+    cell.events.push(['Part released at the pick station, not carried', 'warn']);
+  } else {
+    cell.floor.push({x:p.x, y:p.y}); if (cell.floor.length > 6) cell.floor.shift();
+    cell.dropped++; cell.part = null;
+    cell.events.push(['Part dropped on the floor', 'crit']);
+  }
+}
+function cellUpdate(cell, st, dt, cfg){
+  var v = st.v;
+  if (cell.boot > 0) cell.boot = Math.max(0, cell.boot - dt);
+  v.xDriveReady = cell.boot <= 0 && cfg.driveOk;
+  var act = v.xS1 ? 1 : v.xS2 ? 2 : v.xS3 ? 3 : v.xS0 ? 0 : -1;
+  if (act !== cell.step){
+    var old = cell.step; cell.step = act;
+    if (cfg.auto){
+      if (old === 1) v.xPickLowerDone = false;
+      if (old === 2) v.xCarryDone = false;
+      if (old === 3){ v.xPlaceLowerDone = false; v.xPlaceDone = false; }
+      if (act === 1) v.xPickLowerDone = false;
+      if (act === 2) v.xCarryDone = false;
+      if (act === 3){ v.xPlaceLowerDone = false; v.xPlaceDone = false; }
+    }
+    if (act >= 0) startMove(cell, act);
+  }
+  if (cell.jog){
+    if (v.xServoOn && !v.xAuto){
+      var j = cell.jog; j.t += dt;
+      var uj = Math.min(1, j.t / j.dur), kj = smooth(uj);
+      cell.x = j.from.x + (HOME.x - j.from.x) * kj; cell.y = j.from.y + (HOME.y - j.from.y) * kj;
+      cell.z = j.from.z + (1 - j.from.z) * smooth(uj * 2);
+      if (uj >= 1){ cell.x = HOME.x; cell.y = HOME.y; cell.z = 1; cell.jog = null; }
+    }
+  } else {
+    var mv = cell.mv;
+    if (mv && !mv.done && v.xServoOn && v.xAuto){
+      mv.t += dt;
+      var u = Math.min(1, mv.t / mv.dur), p0 = poseAt(mv, u);
+      cell.x = p0.x; cell.y = p0.y; cell.z = p0.z;
+      if (mv.act === 3 && u >= 0.5 && !mv.low){ mv.low = true; if (cfg.auto) v.xPlaceLowerDone = true; }
+      if (u >= 1){
+        mv.done = true; cell.x = mv.to.x; cell.y = mv.to.y; cell.z = mv.to.z;
+        if (cfg.auto){
+          if (mv.act === 1) v.xPickLowerDone = true;
+          if (mv.act === 2) v.xCarryDone = true;
+          if (mv.act === 3){ v.xPlaceLowerDone = true; v.xPlaceDone = true; }
+        }
+      }
+    }
+  }
+  if (v.xGrip) cell.grip = Math.min(1, cell.grip + dt / Math.max(0.05, cfg.gripDelay));
+  else cell.grip = Math.max(0, cell.grip - dt / 0.25);
+  if (cfg.auto) v.xGripOK = !!(v.xGrip && cell.grip >= 0.999 && !cfg.gripNever);
+  var p = cell.part;
+  if (p){
+    if (!p.held && cell.grip >= 0.999 && dist(cell, PICK) < 30 && cell.z < 0.15 && dist(p, PICK) < 45) p.held = true;
+    if (p.held){
+      if (cell.grip < 0.6) releasePart(cell);
+      else { p.x = cell.x; p.y = cell.y; p.z = cell.z; }
+    }
+  }
+  v.xPart = !!(cell.part && !cell.part.held && dist(cell.part, PICK) < 45);
+  v.xAtHome = dist(cell, HOME) < 6 && cell.z > 0.98;
+}
+/*ENGINE_END*/
+
+/* ---------- Page ---------- */
+var STEP_NAMES = ['Idle','Pick','Carry','Place'];
+var SCAN_S = SCAN_MS / 1000;
+var MAN_TAGS = ['xPickLowerDone','xGripOK','xCarryDone','xPlaceLowerDone','xPlaceDone'];
+var BTN_NAMES = {xStart:'Start', xReset:'Reset', xStopReq:'Stop request'};
+var TAG_DESC = {
+  xEstop_NC:'E-Stop healthy (TRUE = released)', xDoor_NC:'Guard door closed', xAuto:'Key in AUTO (FALSE = T1)',
+  xEnable:'Enabling switch held', xStart:'Start button', xReset:'Reset button', xStopReq:'Stop request button',
+  xPart:'Part at pick point', xGripOK:'Gripper closed feedback', xDriveReady:'Drives ready', xAtHome:'Arm at home',
+  xPickLowerDone:'Lowered at pick point', xCarryDone:'Carry move finished', xPlaceLowerDone:'Lowered at place point',
+  xPlaceDone:'Place move finished (lifted)', xServoOn:'Servo enable output', xGrip:'Close gripper (latched)',
+  xAlarm:'Fault lamp', xSafe:'Latched safe-ready', xS0:'Step 0: Idle', xS1:'Step 1: Pick', xS2:'Step 2: Carry',
+  xS3:'Step 3: Place', xFault:'Latched fault', xStopAfterCycle:'Stop after cycle flag'
+};
+var sim = {
+  fx:{jog:false, grip:false, init:false},
+  st:null, cell:null, cfg:{auto:true, gripDelay:0.6, gripNever:false, speed:1, paused:false, boot:true, driveOk:true},
+  ui:{estop:false, doorOpen:false, auto:true, enable:false},
+  mom:{}, log:[], logDirty:true, scn:null, acc:0, dirty:true, cascade:null, hz:null, fireT:{}, rungs:null, watch:'', placedShown:-1, floorShown:-1
+};
+function $(s){ return document.querySelector(s); }
+function h(tag, cls, html){ var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+function fmt(n, d){ return n.toFixed(d == null ? 1 : d); }
+
+function ev(msg, kind){
+  sim.log.unshift({t:sim.st ? sim.st.t : 0, msg:msg, kind:kind || 'info'});
+  if (sim.log.length > 80) sim.log.pop();
+  sim.logDirty = true;
+}
+function causeText(c){
+  return c === 12 ? 'gripper did not confirm within 2 s (rung 12)' : c === 13 ? 'drive not ready while xS0 is FALSE (rung 13)' : 'unknown';
+}
+
+function applyInputs(){
+  var v = sim.st.v;
+  v.xEstop_NC = !sim.ui.estop; v.xDoor_NC = !sim.ui.doorOpen; v.xAuto = sim.ui.auto; v.xEnable = sim.ui.enable;
+}
+function powerUp(){
+  sim.cfg.driveOk = true;
+  sim.st = newState(sim.fx); sim.cell = newCell(sim.cfg.boot); sim.mom = {}; sim.cascade = null; sim.hz = null; sim.fireT = {};
+  sim.ui = {estop:false, doorOpen:false, auto:true, enable:false}; sim.scn = null; sim.acc = 0;
+  sim.log = []; sim.placedShown = -1; sim.floorShown = -1;
+  applyInputs(); ev('Power-up. Program downloaded, tags at their start values.', 'info');
+  sim.dirty = true; syncOps();
+}
+function press(tag, pointer){
+  sim.st.v[tag] = true; sim.mom[tag] = {left:0.12, pointer:pointer};
+  ev(BTN_NAMES[tag] + ' pressed', 'info'); sim.dirty = true;
+}
+function releaseBtn(tag){ if (sim.mom[tag]) sim.mom[tag].pointer = false; }
+function tap(tag){ press(tag, false); sim.mom[tag].left = 0.3; }
+
+function afterScan(prev, out){
+  var v = sim.st.v, st = sim.st;
+  var chg = function(k){ return prev[k] !== v[k]; };
+  if (chg('xSafe')) ev(v.xSafe ? 'Safe latch ON' : 'Safe latch dropped', v.xSafe ? 'ok' : 'warn');
+  if (chg('xServoOn')) ev(v.xServoOn ? 'Servos ON' : 'Servos OFF', v.xServoOn ? 'ok' : 'warn');
+  if (chg('xFault')) ev(v.xFault ? 'FAULT latched: ' + causeText(st.faultCause) : 'Fault cleared', v.xFault ? 'crit' : 'ok');
+  if (chg('xDriveReady')) ev(v.xDriveReady ? 'Drive ready' : 'Drive not ready', v.xDriveReady ? 'ok' : 'warn');
+  ['xS0','xS1','xS2','xS3'].forEach(function(k, i){ if (!prev[k] && v[k]) ev('Step ' + STEP_NAMES[i] + ' (' + k + ') is on', 'info'); });
+  if (chg('xGrip')) ev(v.xGrip ? 'Gripper latched closed' : 'Gripper opened', 'info');
+  if (chg('xStopAfterCycle') && v.xStopAfterCycle) ev('xStopAfterCycle set. Nothing reads it.', 'warn');
+  if (out.stepRungs.length >= 2){
+    sim.cascade = {t:st.t, rungs:out.stepRungs.slice()};
+    ev('Rungs ' + out.stepRungs.join(', ') + ' fired in ONE scan. The steps ran back to back.', 'crit');
+  }
+  var hz = hazardOf(v);
+  if (hz && !sim.hz) ev('UNSAFE: ' + hz, 'crit');
+  sim.hz = hz;
+  out.rungs.forEach(function(r){ if (r.power) sim.fireT[r.id] = st.t; });
+  sim.cell.events.splice(0).forEach(function(e){ ev(e[0], e[1]); });
+}
+function tick(dt){
+  runScenario(dt);
+  var cell = sim.cell, st = sim.st;
+  cellUpdate(cell, st, dt, sim.cfg);
+  var prev = {}; for (var k in st.v) prev[k] = st.v[k];
+  var out = scan(st, dt * 1000, sim.fx);
+  afterScan(prev, out);
+  Object.keys(sim.mom).forEach(function(tag){
+    var m = sim.mom[tag]; m.left -= dt;
+    if (!m.pointer && m.left <= 0){ st.v[tag] = false; delete sim.mom[tag]; }
+  });
+  sim.dirty = true;
+}
+
+/* ---------- Scenarios ---------- */
+function setDoor(open){ sim.ui.doorOpen = open; applyInputs(); ev(open ? 'Guard door opened' : 'Guard door closed', open ? 'warn' : 'info'); syncOps(); }
+function setEstop(p){ sim.ui.estop = p; applyInputs(); ev(p ? 'E-Stop pressed' : 'E-Stop released', p ? 'warn' : 'info'); syncOps(); }
+function setDrive(ok){ sim.cfg.driveOk = ok; ev(ok ? 'Drive ready restored' : 'Drive fault injected', ok ? 'info' : 'warn'); syncOps(); }
+function doFeed(){
+  if (feedPart(sim.cell)) { sim.cell.events.splice(0).forEach(function(e){ ev(e[0], e[1]); }); }
+  else ev('There is already a part. Nothing fed.', 'info');
+  syncOps();
+}
+function reset0(){ tap('xReset'); }
+function start0(){ tap('xStart'); }
+var BASE_STEPS = [[1.3, reset0], [1.9, doFeed], [2.5, start0]];
+var SCEN = [
+  {id:'power', name:'Power-up', desc:'Drives take 1 s to become ready.', setup:function(){ sim.cfg.gripDelay = 0.6; sim.cfg.gripNever = false; sim.cfg.boot = true; }, steps:[],
+    watch:function(){ return sim.fx.init
+      ? 'xS0 starts TRUE, so rung 13 stays quiet while the drives boot and the alarm lamp stays off.'
+      : 'The alarm lamp is on. On the first scan the drives are not ready and no step bit is TRUE, so rung 13 latched xFault. Once xDriveReady comes on, press Reset: rung 14 sets xS0 and clears the fault.'; }},
+  {id:'ready', name:'Power-up, drives already ready', desc:'No boot delay, so no fault latches.', setup:function(){ sim.cfg.gripDelay = 0.6; sim.cfg.gripNever = false; sim.cfg.boot = false; }, steps:[[1.3, reset0], [1.9, doFeed], [2.5, start0]],
+    watch:function(){ return sim.fx.init
+      ? 'xS0 starts TRUE, so Start works after Reset and the cycle runs.'
+      : 'Reset and Start do nothing. No fault is latched and no step bit is TRUE, so rung 6 never sees xS0. The only rung that sets xS0 is rung 14, and it needs a fault.'; }},
+  {id:'cycle', name:'One pick-and-place cycle', desc:'Reset, feed a part, press Start.', setup:function(){ sim.cfg.gripDelay = 0.6; sim.cfg.gripNever = false; sim.cfg.boot = true; }, steps:BASE_STEPS,
+    watch:function(){ return 'Idle, Pick, Carry, Place, Idle. Rung 7 latches the gripper when the arm is down at the pick point. Rung 10 opens it when the arm is down at the place point.'; }},
+  {id:'door', name:'Open the door mid-cycle', desc:'Door opens while the arm is carrying.', setup:function(){ sim.cfg.gripDelay = 0.6; sim.cfg.gripNever = false; sim.cfg.boot = true; },
+    steps:BASE_STEPS.concat([[5.5, function(){ setDoor(true); }], [8.0, function(){ setDoor(false); }], [8.6, reset0]]),
+    watch:function(){ return 'Rung 3 drops the safe latch and the servos stop the arm in mid-carry. No fault latches. Closing the door is not enough: Reset sets the latch again and the cycle carries on.'; }},
+  {id:'estop', name:'E-Stop mid-cycle', desc:'E-Stop pressed while carrying.', setup:function(){ sim.cfg.gripDelay = 0.6; sim.cfg.gripNever = false; sim.cfg.boot = true; },
+    steps:BASE_STEPS.concat([[5.5, function(){ setEstop(true); }], [8.0, function(){ setEstop(false); }], [8.6, reset0]]),
+    watch:function(){ return 'Rung 2 drops the latch and the arm freezes. Releasing the E-Stop is not enough. Reset sets the latch and the cycle resumes.'; }},
+  {id:'slow', name:'Slow gripper (2.5 s)', desc:'Slower than the 2 s timeout in rung 12.', setup:function(){ sim.cfg.gripDelay = 2.5; sim.cfg.gripNever = false; sim.cfg.boot = true; },
+    steps:BASE_STEPS.concat([[12, reset0]]),
+    watch:function(){ return sim.fx.jog
+      ? 'The alarm lights at 2 s and rung 4 removes the AUTO servo enable. Switch the key to T1, click the enabling switch, press Jog arm to home, switch back to AUTO and press Reset. Rung 14 then clears the fault.'
+      : 'The alarm lights at 2 s and rung 4 switches the servos off. The arm is stuck at the pick point, and rung 14 needs xAtHome, so Reset does nothing. In T1 the servos stay off too, so the arm cannot be jogged home.'; }},
+  {id:'drive', name:'Drive trips mid-cycle', desc:'xDriveReady drops while carrying.', setup:function(){ sim.cfg.gripDelay = 0.6; sim.cfg.gripNever = false; sim.cfg.boot = true; },
+    steps:BASE_STEPS.concat([[5.0, function(){ setDrive(false); }], [8.0, function(){ setDrive(true); }], [9.0, reset0]]),
+    watch:function(){ return 'Rung 13 latches a fault as soon as xDriveReady drops in a step. The drive comes back at 8 s, but the arm is not home, so Reset at 9 s is ignored by rung 14.'; }}
+];
+function startScenario(sc){
+  sc.setup(); powerUp();
+  $('#gBoot').checked = !sim.cfg.boot;
+  sim.scn = {t:0, i:0, steps:sc.steps, id:sc.id};
+  sim.watch = sc.watch; syncScn(); syncOps(); sim.dirty = true;
+}
+function runScenario(dt){
+  var s = sim.scn; if (!s) return;
+  s.t += dt;
+  while (s.i < s.steps.length && s.steps[s.i][0] <= s.t){ s.steps[s.i][1](); s.i++; }
+}
+
+/* ---------- Build static DOM ---------- */
+function contactEl(ct){
+  var d = h('div', 'ct' + (ct.n ? ' neg' : '') + (ct.fixed ? ' fixed' : ''));
+  d.innerHTML = '<span class="tg">' + ct.v + '</span><span class="sym"><i></i></span>';
+  d.title = 'Passes when ' + ct.v + ' is ' + (ct.n ? 'FALSE' : 'TRUE');
+  return d;
+}
+function buildLadder(){
+  var host = $('#ladder'); host.innerHTML = '';
+  sim.rungs = buildRungs(sim.fx);
+  sim.rungs.forEach(function(r){
+    var el = h('div', 'rung');
+    el.appendChild(h('div', 'rhead', '<b>R' + r.id + '</b><span class="rt">' + r.title + '</span><span class="rp">' + r.plain + '</span>'));
+    var hasAfter = r.after && r.after.length;
+    var wrap = h('div', 'rwrap' + (hasAfter ? '' : ' solo'));
+    var branches = h('div', 'branches');
+    var d = {el:el, br:[], coils:[], after:null};
+    r.branches.forEach(function(b, bi){
+      var row = h('div', 'brow'), bd = {ws:[], cts:[]};
+      b.forEach(function(ct){
+        var w = h('span', 'w'); bd.ws.push(w); row.appendChild(w);
+        var c = contactEl(ct); bd.cts.push(c); row.appendChild(c);
+      });
+      var wl = h('span', 'w'); bd.ws.push(wl); row.appendChild(wl);
+      if (r.timer && bi === 0){
+        var ton = h('div', 'ton', '<b>TON ' + r.timer.name + '</b><span>PT ' + fmt(r.timer.pt / 1000) + ' s</span><div class="bar"><i></i></div><span class="et">ET 0.0 s</span>');
+        row.appendChild(ton);
+        var wq = h('span', 'w'); bd.ws.push(wq); row.appendChild(wq);
+        bd.ton = ton;
+      }
+      branches.appendChild(row); d.br.push(bd);
+    });
+    if (r.branches.length > 1){ d.join = h('span', 'join'); branches.appendChild(d.join); }
+    wrap.appendChild(branches);
+    if (hasAfter){
+      var af = h('div', 'after'), ad = {ws:[], cts:[]};
+      r.after.forEach(function(ct){
+        var w = h('span', 'w'); ad.ws.push(w); af.appendChild(w);
+        var c = contactEl(ct); ad.cts.push(c); af.appendChild(c);
+      });
+      var wz = h('span', 'w'); ad.ws.push(wz); af.appendChild(wz);
+      wrap.appendChild(af); d.after = ad;
+    }
+    el.appendChild(wrap);
+    d.outw = h('span', 'outw'); el.appendChild(d.outw);
+    var coils = h('div', 'coils');
+    r.coils.forEach(function(co){
+      var ce = h('div', 'coil' + (co.fixed ? ' fixed' : ''));
+      var ty = co.t === 'O' ? '( )' : '(' + co.t + ')';
+      ce.innerHTML = '<span class="in"><span class="ty">' + ty + '</span><span>' + co.v + '</span><i class="dot"></i></span>';
+      coils.appendChild(ce); d.coils.push({el:ce, dot:ce.querySelector('.dot'), co:co});
+    });
+    el.appendChild(coils);
+    host.appendChild(el); r.dom = d;
+  });
+}
+function buildTags(){
+  var host = $('#tags'); host.innerHTML = ''; sim.tagEls = {};
+  [['Inputs', TAGS.inputs], ['Outputs', TAGS.outputs], ['Internal', TAGS.memory]].forEach(function(g){
+    var grp = h('div', 'tgrp', '<h3>' + g[0] + '</h3>'), grid = h('div', 'tgrid');
+    g[1].forEach(function(k){
+      var e = h('div', 'tg2', '<i class="led"></i><code>' + k + '</code><span class="ds">' + TAG_DESC[k] + '</span>');
+      grid.appendChild(e); sim.tagEls[k] = e.querySelector('.led');
+    });
+    if (g[0] === 'Internal'){
+      var t = h('div', 'tg2', '<i class="led"></i><code>tGrip</code><span class="ds" id="tgripd">TON, 2 s</span>');
+      grid.appendChild(t); sim.tagEls.tGrip = t.querySelector('.led');
+    }
+    grp.appendChild(grid); host.appendChild(grp);
+  });
+}
+var FIXES = [
+  {k:'jog', title:'Let T1 recover from a fault', refs:'R4', text:'Rung 4 has /xFault after the join, so a latched fault also removes the servo enable in T1. Rung 14 needs xAtHome, so after a mid-cycle fault the arm cannot be jogged home and Reset never works. Put /xFault on the AUTO branch only.'},
+  {k:'grip', title:'Fault reset opens the gripper', refs:'R14', text:'xGrip is set in rung 7 and cleared only in rung 10. After a fault the gripper stays closed through Reset. Add (R) xGrip to rung 14. Any part still in the gripper is released at that moment.'},
+  {k:'init', title:'Start in Idle', refs:'xS0 := TRUE', text:'With the drives ready on the first scan no fault latches, and nothing else sets xS0, so no cycle can start. Initialise xS0 to TRUE. Takes effect at the next power-up.'}
+];
+function buildFixes(){
+  var host = $('#fixes'); host.innerHTML = '';
+  FIXES.forEach(function(f){
+    var lab = h('label', 'fx');
+    lab.innerHTML = '<input type="checkbox" id="fx_' + f.k + '"><div><b>' + f.title + '</b><span class="refs">' + f.refs + '</span><span>' + f.text + '</span></div>';
+    host.appendChild(lab);
+    lab.querySelector('input').addEventListener('change', function(e){
+      sim.fx[f.k] = e.target.checked;
+      ev((e.target.checked ? 'Fix on: ' : 'Fix off: ') + f.title + (f.k === 'init' ? ' (applies at the next power-up)' : ''), 'info');
+      buildLadder(); syncFixes(); sim.dirty = true;
+    });
+  });
+}
+function syncFixes(){
+  var all = true;
+  FIXES.forEach(function(f){
+    var cb = $('#fx_' + f.k); cb.checked = sim.fx[f.k]; cb.closest('.fx').classList.toggle('on', sim.fx[f.k]);
+    if (!sim.fx[f.k]) all = false;
+  });
+  $('#fxAll').textContent = all ? 'Back to your drawing' : 'Apply all fixes';
+}
+function buildScn(){
+  var host = $('#scn'); host.innerHTML = '';
+  SCEN.forEach(function(sc){
+    var b = h('button', 'btn', '<span>' + sc.name + '</span><small>' + sc.desc + '</small>');
+    b.type = 'button'; b.dataset.id = sc.id;
+    b.addEventListener('click', function(){ startScenario(sc); });
+    host.appendChild(b);
+  });
+}
+function syncScn(){
+  var cur = sim.scn ? sim.scn.id : null;
+  Array.prototype.forEach.call($('#scn').children, function(b){ b.classList.toggle('run', b.dataset.id === cur); });
+}
+function buildManual(){
+  var host = $('#manRow'); host.innerHTML = '';
+  MAN_TAGS.forEach(function(k){
+    var b = h('button', 'op good', '<span>' + k + '</span><small>FALSE</small>');
+    b.type = 'button'; b.id = 'man_' + k; b.setAttribute('aria-pressed', 'false');
+    b.addEventListener('click', function(){ sim.st.v[k] = !sim.st.v[k]; syncOps(); sim.dirty = true; });
+    host.appendChild(b);
+  });
+}
+
+/* ---------- Operator panel wiring ---------- */
+function syncOps(){
+  var u = sim.ui, v = sim.st ? sim.st.v : {};
+  $('#oEstop').setAttribute('aria-pressed', u.estop); $('#oEstopS').textContent = u.estop ? 'PRESSED' : 'Released';
+  $('#oDoor').setAttribute('aria-pressed', u.doorOpen); $('#oDoorS').textContent = u.doorOpen ? 'OPEN' : 'Closed';
+  $('#oEnable').setAttribute('aria-pressed', u.enable); $('#oEnableS').textContent = u.enable ? 'Held. Click to release.' : 'Released. Click to hold.';
+  $('#oDrive').setAttribute('aria-pressed', sim.cfg.driveOk); $('#oDriveS').textContent = 'xDriveReady ' + (v.xDriveReady ? 'TRUE' : 'FALSE');
+  Array.prototype.forEach.call($('#oKey').children, function(b){ b.setAttribute('aria-pressed', (b.dataset.v === 'auto') === u.auto); });
+  Array.prototype.forEach.call($('#oCell').children, function(b){ b.setAttribute('aria-pressed', (b.dataset.v === 'auto') === sim.cfg.auto); });
+  $('#manRow').hidden = sim.cfg.auto;
+  MAN_TAGS.forEach(function(k){
+    var b = $('#man_' + k); b.setAttribute('aria-pressed', !!v[k]); b.querySelector('small').textContent = v[k] ? 'TRUE' : 'FALSE';
+  });
+  $('#gDelay').value = sim.cfg.gripDelay; $('#gDelayO').textContent = fmt(sim.cfg.gripDelay) + ' s';
+  $('#gNever').checked = sim.cfg.gripNever;
+  $('#gBoot').checked = !sim.cfg.boot;
+  $('#bPause').textContent = sim.cfg.paused ? 'Resume' : 'Pause';
+  Array.prototype.forEach.call($('#spd').children, function(b){ b.setAttribute('aria-pressed', parseFloat(b.dataset.v) === sim.cfg.speed); });
+  $('#oPartS').textContent = sim.cell && sim.cell.part ? 'A part is on the table' : 'No part at pick';
+}
+function bindHold(btn, down, up){
+  var on = function(e){ e.preventDefault(); btn.classList.add('down'); down(); };
+  var off = function(){ if (btn.classList.contains('down')){ btn.classList.remove('down'); up(); } };
+  btn.addEventListener('pointerdown', on);
+  ['pointerup','pointerleave','pointercancel'].forEach(function(t){ btn.addEventListener(t, off); });
+  btn.addEventListener('keydown', function(e){ if ((e.key === ' ' || e.key === 'Enter') && !e.repeat){ e.preventDefault(); on(e); } });
+  btn.addEventListener('keyup', function(e){ if (e.key === ' ' || e.key === 'Enter') off(); });
+  btn.addEventListener('blur', off);
+}
+function wire(){
+  $('#oEstop').addEventListener('click', function(){ setEstop(!sim.ui.estop); });
+  $('#oDoor').addEventListener('click', function(){ setDoor(!sim.ui.doorOpen); });
+  $('#oEnable').addEventListener('click', function(){ sim.ui.enable = !sim.ui.enable; applyInputs(); ev(sim.ui.enable ? 'Enabling switch held' : 'Enabling switch released', 'info'); syncOps(); sim.dirty = true; });
+  $('#oDrive').addEventListener('click', function(){ setDrive(!sim.cfg.driveOk); sim.dirty = true; });
+  Array.prototype.forEach.call($('#oKey').children, function(b){
+    b.addEventListener('click', function(){ sim.ui.auto = b.dataset.v === 'auto'; applyInputs(); ev('Mode key to ' + (sim.ui.auto ? 'AUTO' : 'T1'), 'info'); syncOps(); sim.dirty = true; });
+  });
+  bindHold($('#oStart'), function(){ press('xStart', true); }, function(){ releaseBtn('xStart'); });
+  bindHold($('#oReset'), function(){ press('xReset', true); }, function(){ releaseBtn('xReset'); });
+  bindHold($('#oStop'), function(){ press('xStopReq', true); }, function(){ releaseBtn('xStopReq'); });
+  $('#oFeed').addEventListener('click', function(){ doFeed(); sim.dirty = true; });
+  $('#oJog').addEventListener('click', function(){
+    var v = sim.st.v;
+    if (v.xServoOn && !v.xAuto){ jogHome(sim.cell); ev('Jogging the arm to home', 'info'); }
+    else ev('Jog refused: it needs servos on with the key in T1.', 'warn');
+    sim.dirty = true;
+  });
+  Array.prototype.forEach.call($('#oCell').children, function(b){
+    b.addEventListener('click', function(){
+      sim.cfg.auto = b.dataset.v === 'auto';
+      if (!sim.cfg.auto) MAN_TAGS.forEach(function(k){ sim.st.v[k] = false; });
+      ev(sim.cfg.auto ? 'The simulated cell now drives the done bits and xGripOK' : 'You drive the done bits and xGripOK', 'info');
+      syncOps(); sim.dirty = true;
+    });
+  });
+  $('#gDelay').addEventListener('input', function(e){ sim.cfg.gripDelay = parseFloat(e.target.value); $('#gDelayO').textContent = fmt(sim.cfg.gripDelay) + ' s'; });
+  $('#gNever').addEventListener('change', function(e){ sim.cfg.gripNever = e.target.checked; });
+  $('#gBoot').addEventListener('change', function(e){ sim.cfg.boot = !e.target.checked; ev('Takes effect at the next power-up.', 'info'); });
+  $('#bPause').addEventListener('click', function(){ sim.cfg.paused = !sim.cfg.paused; syncOps(); });
+  $('#bStep').addEventListener('click', function(){ sim.cfg.paused = true; tick(SCAN_S); syncOps(); });
+  Array.prototype.forEach.call($('#spd').children, function(b){ b.addEventListener('click', function(){ sim.cfg.speed = parseFloat(b.dataset.v); syncOps(); }); });
+  $('#bPower').addEventListener('click', function(){ powerUp(); sim.watch = ''; syncScn(); });
+  $('#fxAll').addEventListener('click', function(){
+    var all = FIXES.every(function(f){ return sim.fx[f.k]; });
+    FIXES.forEach(function(f){ sim.fx[f.k] = !all; });
+    buildLadder(); syncFixes();
+    powerUp(); ev(all ? 'All fixes off. Back to your drawing.' : 'All fixes on.', 'info'); syncScn();
+  });
+}
+
+/* ---------- Render ---------- */
+function ik(x, y){
+  var dx = x - BASE.x, dy = y - BASE.y, d = Math.hypot(dx, dy);
+  var dd = Math.min(L1 + L2 - 1, Math.max(Math.abs(L1 - L2) + 1, d));
+  var a = Math.atan2(dy, dx);
+  var A = Math.acos(Math.max(-1, Math.min(1, (L1 * L1 + dd * dd - L2 * L2) / (2 * L1 * dd))));
+  var th = a - A;
+  return {ex:BASE.x + L1 * Math.cos(th), ey:BASE.y + L1 * Math.sin(th)};
+}
+function setLine(el, x1, y1, x2, y2){ el.setAttribute('x1', x1); el.setAttribute('y1', y1); el.setAttribute('x2', x2); el.setAttribute('y2', y2); }
+function renderCell(){
+  var c = sim.cell, v = sim.st.v, K = ik(c.x, c.y);
+  setLine($('#l1'), BASE.x, BASE.y, K.ex, K.ey); setLine($('#l2'), K.ex, K.ey, c.x, c.y);
+  $('#elbow').setAttribute('cx', K.ex); $('#elbow').setAttribute('cy', K.ey);
+  $('#tool').setAttribute('transform', 'translate(' + c.x + ' ' + c.y + ')');
+  var r = 20 + 10 * c.z;
+  $('#tring').setAttribute('r', r);
+  var sh = $('#tsh'); sh.setAttribute('r', r); sh.setAttribute('cx', 4 + c.z * 16); sh.setAttribute('cy', 4 + c.z * 16);
+  var gap = 6 + (1 - c.grip) * 22;
+  $('#jawL').setAttribute('x', -(gap / 2 + 8)); $('#jawR').setAttribute('x', gap / 2);
+  $('#sring').classList.toggle('on', !!v.xServoOn);
+  $('#esk').classList.toggle('hit', sim.ui.estop);
+  var door = $('#door');
+  door.classList.toggle('open', sim.ui.doorOpen);
+  if (sim.ui.doorOpen){ setLine(door, 260, 600, 260 + 140 * Math.cos(0.7), 600 + 140 * Math.sin(0.7)); } else { setLine(door, 260, 600, 400, 600); }
+  var p = $('#part');
+  if (c.part){
+    p.setAttribute('visibility', 'visible');
+    p.setAttribute('x', c.part.x - 17); p.setAttribute('y', c.part.y - 17);
+  } else p.setAttribute('visibility', 'hidden');
+  if (sim.placedShown !== c.placed){
+    var pal = $('#pallet'); pal.innerHTML = '';
+    for (var i = 0; i < Math.min(12, c.placed); i++){
+      var rc = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rc.setAttribute('class', 'pall'); rc.setAttribute('width', 30); rc.setAttribute('height', 30); rc.setAttribute('rx', 3);
+      rc.setAttribute('x', PLACE.x - 66 + (i % 4) * 34); rc.setAttribute('y', PLACE.y - 46 + Math.floor(i / 4) * 34);
+      pal.appendChild(rc);
+    }
+    sim.placedShown = c.placed;
+  }
+  if (sim.floorShown !== c.dropped){
+    var fl = $('#floorParts'); fl.innerHTML = '';
+    c.floor.forEach(function(f){
+      var rc = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rc.setAttribute('class', 'partf'); rc.setAttribute('width', 30); rc.setAttribute('height', 30); rc.setAttribute('rx', 3);
+      rc.setAttribute('x', f.x - 15); rc.setAttribute('y', f.y - 15); fl.appendChild(rc);
+    });
+    sim.floorShown = c.dropped;
+  }
+  $('#gm').setAttribute('y', 120 + (1 - c.z) * 360 - 4.5);
+  var step = v.xS1 ? 'Pick' : v.xS2 ? 'Carry' : v.xS3 ? 'Place' : v.xS0 ? 'Idle' : 'no step';
+  $('#cellInfo').textContent = 'Step: ' + step + '   Servos: ' + (v.xServoOn ? 'ON' : 'OFF') + '   Z: ' + fmt(c.z, 2);
+}
+function chip(cls, label, val){ return '<span class="chip ' + cls + '">' + label + ' <b>' + val + '</b></span>'; }
+function renderStatus(){
+  var v = sim.st.v, c = sim.cell;
+  var step = v.xS1 ? 'Pick' : v.xS2 ? 'Carry' : v.xS3 ? 'Place' : v.xS0 ? 'Idle' : 'none';
+  $('#strip').innerHTML =
+    chip('', 'Step', step) +
+    chip(v.xSafe ? 'ok' : 'warn', 'Safe latch', v.xSafe ? 'ON' : 'off') +
+    chip(v.xServoOn ? 'ok' : '', 'Servos', v.xServoOn ? 'ON' : 'off') +
+    chip(v.xDriveReady ? 'ok' : 'crit', 'Drive', v.xDriveReady ? 'ready' : 'not ready') +
+    chip(v.xAtHome ? 'ok' : '', 'Arm', v.xAtHome ? 'at home' : 'away') +
+    chip(v.xFault ? 'crit' : '', 'Fault', v.xFault ? 'LATCHED' : 'none') +
+    chip(v.xAlarm ? 'crit' : '', 'Alarm lamp', v.xAlarm ? 'ON' : 'off') +
+    chip('', 'Placed', c.placed) + (c.dropped ? chip('crit', 'Dropped', c.dropped) : '') +
+    chip('', 'Scan', '#' + sim.st.scans + ' · ' + fmt(sim.st.t) + ' s');
+  var b = '';
+  var hz = hazardOf(v);
+  if (hz) b += '<div class="ban crit"><b>Unsafe</b><span>' + hz + '</span></div>';
+  if (sim.cascade && sim.st.t - sim.cascade.t < 8) b += '<div class="ban crit"><b>Steps collapsed</b><span>Rungs ' + sim.cascade.rungs.join(', ') + ' fired in one scan, so the steps ran back to back. A done bit was still TRUE when its step began.</span></div>';
+  if (v.xFault) b += '<div class="ban warn"><b>Fault</b><span>' + causeText(sim.st.faultCause) + '. The alarm lamp is on.</span></div>';
+  $('#banners').innerHTML = b;
+  $('#waiting').innerHTML = waitingFor();
+}
+function waitingFor(){
+  var v = sim.st.v;
+  var active = v.xS1 || v.xS2 || v.xS3;
+  var frozen = active && !v.xServoOn ? 'Servos are off, so the arm is frozen. ' : '';
+  if (v.xFault){
+    var miss = [];
+    if (!v.xSafe) miss.push('the safe latch (E-Stop released, door closed, press Reset)');
+    if (!v.xDriveReady) miss.push('xDriveReady');
+    if (!v.xAtHome) miss.push('xAtHome (the arm is not at home)');
+    var s = '<b>Rung 14 (fault reset) is waiting for:</b> ' + (miss.length ? miss.join(', ') + '.' : 'a Reset press.');
+    if (!v.xAtHome && !v.xServoOn) s += ' The fault has switched the servos off, so the arm cannot get home by itself' + (sim.fx.jog ? '. Use T1 and jog.' : ', not even in T1.');
+    return s;
+  }
+  if (v.xS0){
+    var m = [];
+    if (!v.xSafe) m.push('the safe latch (E-Stop released, door closed, press Reset)');
+    if (!v.xAuto) m.push('the key in AUTO');
+    if (!v.xPart) m.push('a part at the pick station');
+    if (!v.xStart) m.push('the Start button');
+    return m.length ? '<b>Rung 6 (Idle to Pick) is waiting for:</b> ' + m.join(', ') + '.' : '<b>Rung 6:</b> every condition is TRUE.';
+  }
+  if (v.xS1){
+    if (!v.xPickLowerDone) return frozen + '<b>Pick:</b> the arm is moving over the pick point and lowering. Rung 7 waits for xPickLowerDone.';
+    if (!v.xGripOK) return frozen + '<b>Pick:</b> arm down, gripper closing. Rung 8 needs xGripOK. Timer tGrip: ' + fmt(sim.st.ton.et / 1000) + ' of 2.0 s.';
+    return '<b>Pick:</b> rung 8 is about to advance.';
+  }
+  if (v.xS2) return frozen + '<b>Carry:</b> rung 9 waits for xCarryDone.';
+  if (v.xS3) return frozen + '<b>Place:</b> rung 10 opens the gripper at xPlaceLowerDone, rung 11 returns to Idle at xPlaceDone.';
+  return '<b>No step bit is on and no fault is latched,</b> so no rung can start a cycle. Only rung 14 sets xS0 and it needs a fault.';
+}
+function renderLadder(){
+  var L = sim.st.last; if (!L) return;
+  sim.rungs.forEach(function(r, ri){
+    var res = L.rungs[ri], d = r.dom, v = sim.st.v;
+    res.br.forEach(function(b, bi){
+      var bd = d.br[bi];
+      b.items.forEach(function(it, ii){ bd.cts[ii].classList.toggle('on', it.pass); bd.ws[ii].classList.toggle('hot', it.inflow); });
+      bd.ws[b.items.length].classList.toggle('hot', b.ok);
+      if (bd.ton){
+        var ton = bd.ton; ton.classList.toggle('on', b.ok); ton.classList.toggle('q', res.q);
+        ton.querySelector('.bar i').style.width = Math.min(100, res.et / GRIP_PT * 100) + '%';
+        ton.querySelector('.et').textContent = 'ET ' + fmt(res.et / 1000, 2) + ' s';
+        bd.ws[b.items.length + 1].classList.toggle('hot', res.q);
+      }
+    });
+    if (d.after && res.after){
+      res.after.items.forEach(function(it, ii){ d.after.cts[ii].classList.toggle('on', it.pass); d.after.ws[ii].classList.toggle('hot', it.inflow); });
+      d.after.ws[res.after.items.length].classList.toggle('hot', res.after.ok);
+    }
+    if (d.join) d.join.classList.toggle('hot', res.rungPower);
+    d.outw.classList.toggle('hot', res.power);
+    d.coils.forEach(function(cl){
+      cl.el.classList.toggle('on', res.power);
+      cl.dot.classList.toggle('v', !!v[cl.co.v]);
+    });
+    d.el.classList.toggle('live', sim.st.t - (sim.fireT[r.id] === undefined ? -9 : sim.fireT[r.id]) < 0.35 && r.coils.some(function(c){ return c.t !== 'O'; }));
+  });
+}
+function renderTags(){
+  var v = sim.st.v;
+  Object.keys(sim.tagEls).forEach(function(k){
+    sim.tagEls[k].classList.toggle('on', k === 'tGrip' ? sim.st.ton.et > 0 : !!v[k]);
+  });
+  var td = $('#tgripd'); if (td) td.textContent = 'TON 2 s, ET ' + fmt(sim.st.ton.et / 1000, 2) + ' s';
+}
+function renderLog(){
+  if (!sim.logDirty) return; sim.logDirty = false;
+  var ul = $('#log'); ul.innerHTML = '';
+  if (!sim.log.length){ ul.appendChild(h('li', 'empty', 'Nothing yet.')); return; }
+  sim.log.forEach(function(e){ ul.appendChild(h('li', e.kind, '<time>' + fmt(e.t) + ' s</time><span>' + e.msg + '</span>')); });
+}
+function render(){
+  renderCell(); renderStatus(); renderLadder(); renderTags(); renderLog(); syncOps();
+  $('#watch').textContent = sim.watch ? (typeof sim.watch === 'function' ? sim.watch() : sim.watch) : 'Pick a scenario. It powers the program up again and presses the buttons for you.';
+}
+
+/* ---------- Main loop ---------- */
+var lastT = performance.now();
+function frame(now){
+  var real = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+  if (!sim.cfg.paused){
+    sim.acc += real * sim.cfg.speed;
+    while (sim.acc >= SCAN_S){ tick(SCAN_S); sim.acc -= SCAN_S; }
+  }
+  if (sim.dirty){ sim.dirty = false; render(); }
+  requestAnimationFrame(frame);
+}
+buildScn(); buildFixes(); buildTags(); buildManual();
+powerUp(); buildLadder(); syncFixes(); wire();
+tick(SCAN_S);
+render();
+requestAnimationFrame(frame);
+</script>
+
+</body>
+</html>
